@@ -2,73 +2,109 @@ pipeline {
     agent any
 
     environment {
+        // Root JMeter directory (NOT the bin folder)
         JMETER_HOME = "C:\\Users\\Youss\\Downloads\\apache-jmeter-5.6.3\\apache-jmeter-5.6.3"
-        RESULTS_DIR = "logs"
-        REPORT_DIR = "html\\report"
-        TEST_PLAN = "api.jmx"
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Prepare Workspace') {
             steps {
-                echo "Checking out source code..."
-                checkout scm
+                echo "Preparing workspace..."
+
+                bat '''
+                    if exist logs rmdir /s /q logs
+                    if exist html rmdir /s /q html
+
+                    mkdir logs
+                    mkdir html
+                    mkdir html\\report
+                '''
             }
         }
 
-        stage('Prepare Workspace') {
+        stage('Debug Environment') {
             steps {
-                bat """
-                    if exist %RESULTS_DIR% rmdir /s /q %RESULTS_DIR%
-                    if exist html rmdir /s /q html
+                echo "Checking environment..."
 
-                    mkdir %RESULTS_DIR%
-                    mkdir html
-                    mkdir %REPORT_DIR%
-                """
+                bat '''
+                    echo ================================
+                    echo Current Directory:
+                    cd
+
+                    echo.
+                    echo Workspace Contents:
+                    dir
+
+                    echo.
+                    echo Java Version:
+                    java -version
+
+                    echo.
+                    echo JMETER_HOME:
+                    echo %JMETER_HOME%
+
+                    echo.
+                    echo JMeter Folder:
+                    dir "%JMETER_HOME%"
+
+                    echo.
+                    echo JMeter Bin:
+                    dir "%JMETER_HOME%\\bin"
+
+                    echo.
+                    echo Checking api.jmx...
+                    if exist api.jmx (
+                        echo api.jmx FOUND
+                    ) else (
+                        echo api.jmx NOT FOUND
+                        exit /b 1
+                    )
+
+                    echo ================================
+                '''
             }
         }
 
         stage('Run JMeter Test') {
             steps {
-                echo "Executing JMeter Performance Test..."
+                echo "Running JMeter..."
 
-                bat """
-                    "%JMETER_HOME%\\jmeter.bat" ^
-                    -n ^
-                    -t %TEST_PLAN% ^
-                    -l %RESULTS_DIR%\\results.jtl ^
+                bat '''
+                    "%JMETER_HOME%\\bin\\jmeter.bat" -n ^
+                    -t api.jmx ^
+                    -l logs\\results.jtl ^
                     -e ^
-                    -o %REPORT_DIR%
-                """
+                    -o html\\report
+                '''
+            }
+        }
+
+        stage('Verify Results') {
+            steps {
+                bat '''
+                    if exist logs\\results.jtl (
+                        echo Results file generated successfully.
+                    ) else (
+                        echo ERROR: results.jtl not found!
+                        exit /b 1
+                    )
+                '''
             }
         }
 
         stage('Performance Gates') {
             steps {
-                script {
-
-                    // Analyse JMeter results
-                    perfReport(
-                        sourceDataFiles: 'logs/results.jtl',
-
-                        // Performance Gates
-                        errorFailedThreshold: 5,
-                        errorUnstableThreshold: 2,
-
-                        relativeFailedThresholdPositive: 20,
-                        relativeUnstableThresholdPositive: 10,
-
-                        modeOfThreshold: true
-                    )
-                }
+                perfReport(
+                    sourceDataFiles: 'logs/results.jtl',
+                    errorFailedThreshold: 5,
+                    errorUnstableThreshold: 2
+                )
             }
         }
 
-        stage('Publish Reports') {
+        stage('Publish HTML Report') {
             steps {
-
                 publishHTML(target: [
                     reportDir: 'html/report',
                     reportFiles: 'index.html',
@@ -84,23 +120,19 @@ pipeline {
     post {
 
         success {
-            echo "Performance Test Passed."
+            echo "SUCCESS: Performance test completed successfully."
         }
 
         unstable {
-            echo "Performance thresholds exceeded. Build marked UNSTABLE."
+            echo "UNSTABLE: Performance thresholds exceeded."
         }
 
         failure {
-            echo "Performance test failed."
+            echo "FAILURE: Pipeline failed."
         }
 
         always {
-            archiveArtifacts artifacts: 'logs/results.jtl, html/report/**'
-        }
-
-        cleanup {
-            cleanWs()
+            archiveArtifacts artifacts: 'logs/results.jtl, html/report/**', fingerprint: true
         }
     }
 }
