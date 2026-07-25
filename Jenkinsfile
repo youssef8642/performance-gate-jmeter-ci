@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        JMETER_HOME = "C:\\Users\\Youss\\Downloads\\apache-jmeter-5.6.3\\apache-jmeter-5.6.3\\bin"
+        JMETER_HOME = "C:\\Users\\Youss\\Downloads\\apache-jmeter-5.6.3\\apache-jmeter-5.6.3"
         RESULTS_DIR = "logs"
         REPORT_DIR = "html\\report"
         TEST_PLAN = "api.jmx"
